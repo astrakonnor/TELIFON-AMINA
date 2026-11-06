@@ -16,6 +16,7 @@ export const PHONE_APPS = [
     ['browser','Браузер','Browser','fa-compass','#5eabe0','Поиск, новости и сайты','Search, news and websites'],
     ['maps','Карты','Maps','fa-map-location-dot','#78b991','Места и маршруты','Places and routes'],
     ['notes','Заметки','Notes','fa-note-sticky','#cab76b','Заметки для себя и сюжета','Personal and shared notes'],
+    ['case','Дело','Case','fa-magnifying-glass','#c98f2b','Улики, план и версии расследования SISTAVERN','SISTAVERN case: clues, plan and theories'],
     ['calendar','Календарь','Calendar','fa-calendar-days','#cc8293','Планы и события','Plans and events'],
     ['events','Ивенты','Events','gp-event-sparkles','#ae8acb','События и предложения','Story events and offers'],
     ['appearance','Оформление','Appearance','fa-palette','#8d9acb','Темы и обои','Themes and wallpapers'],

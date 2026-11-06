@@ -12,7 +12,7 @@ const L=(ru,en)=>lang()==='en'?en:ru;
 const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,7);
 const I=n=>'<i class="fa-solid '+n+'" aria-hidden="true"></i>';
 const canonical=app=>['socialhub','storyevent'].includes(app)?'events':app;
-const known=new Set(['appstore','list','tw','ig','events','of','bank','shop','chans','casino','browser','maps','discord','twitch','notes','tinder','appearance','settings','phone','contacts','calendar']);
+const known=new Set(['appstore','list','tw','ig','events','of','bank','shop','chans','casino','browser','maps','discord','twitch','notes','case','tinder','appearance','settings','phone','contacts','calendar']);
 let state={page:0,editing:false,folder:'',suppress:0};
 let gesture=null;
 const mounts=new WeakMap();
@@ -30,7 +30,7 @@ export function disposePhoneHome(screen){if(screen){screen.querySelectorAll('.gp
 function save(){saveSettingsDebounced();}
 function layout(templates){
     const settings=getSettings();let changed=false;
-    if(!settings.homeLayout||typeof settings.homeLayout!=='object'){settings.homeLayout={version:1,entries:[],dock:['list','phone','browser','maps'],widgets:[]};changed=true;}
+    if(!settings.homeLayout||typeof settings.homeLayout!=='object'){settings.homeLayout={version:1,entries:[],dock:['list','case','phone','browser'],widgets:[]};changed=true;}
     const h=settings.homeLayout;h.entries=Array.isArray(h.entries)?h.entries:[];h.widgets=Array.isArray(h.widgets)?h.widgets:[];h.dock=Array.isArray(h.dock)?h.dock.slice(0,4):['list','phone','browser','maps'];
     const before=JSON.stringify([h.entries,h.dock,h.widgets]);
     while(h.dock.length<4)h.dock.push(null);
@@ -39,7 +39,7 @@ function layout(templates){
         if(e?.type==='folder'&&Array.isArray(e.apps)){e.apps=e.apps.filter(app=>{if(!known.has(app)||used.has(app))return false;used.add(app);return true;});return e.apps.length>0;}
         if(e?.type==='app'&&known.has(e.app)&&!used.has(e.app)){used.add(e.app);return true;}return false;
     });
-    for(const app of templates.keys())if(!used.has(app)){h.entries.push({id:'app:'+app,type:'app',app});used.add(app);changed=true;}
+    for(const app of templates.keys())if(!used.has(app)){const item={id:'app:'+app,type:'app',app};if(app==='case')h.entries.unshift(item);else h.entries.push(item);used.add(app);changed=true;}
     h.widgets=h.widgets.filter(w=>w&&['image','note','messages','calendar'].includes(w.type)).slice(0,8);
     if(before!==JSON.stringify([h.entries,h.dock,h.widgets])){syncGridOrder(h);changed=true;}
     if(changed)save();return h;

@@ -5,6 +5,7 @@ import { getRpNow, realToRpDate } from './state.js';
 import { cancelPhoneImageGenerations } from './social.js';
 import { saveSticker } from './chat-media.js';
 import { renderAppStore } from './app-store.js';
+import { renderCaseApp, caseBadge, isSistavernChat } from './sistavern-case.js';
 import { syncAppNotifications, markAppNotificationsRead } from './app-notifications.js';
 import { isPhoneAppInstalled, phoneAppForThread } from './state.js';
 import { phoneAppId } from './phone-apps.js';
@@ -735,7 +736,7 @@ function tickClock() {
 // Приложения со своим оформлением (дискорд, твич, сторис, экран блокировки)
 // рисуют фон сами и должны доходить до краёв корпуса — общие поля экрана им
 // только мешают.
-const BLEED_SCREENS = new Set(['appstore','discord', 'dchannel', 'twitch', 'stream', 'mystream', 'igstory', 'ig', 'igview', 'ignew', 'ignewstory', 'igdms', 'igdm', 'igactivity', 'lock', 'browser', 'maps', 'phone', 'contacts', 'thread', 'bank', 'banktx', 'bankloan', 'bankmortgage', 'bankrec', 'chans', 'shop', 'shopcat']);
+const BLEED_SCREENS = new Set(['appstore','case','discord', 'dchannel', 'twitch', 'stream', 'mystream', 'igstory', 'ig', 'igview', 'ignew', 'ignewstory', 'igdms', 'igdm', 'igactivity', 'lock', 'browser', 'maps', 'phone', 'contacts', 'thread', 'bank', 'banktx', 'bankloan', 'bankmortgage', 'bankrec', 'chans', 'shop', 'shopcat']);
 
 export function render() {
     const screen = document.getElementById('gp-screen');
@@ -813,6 +814,7 @@ export function render() {
     else if (currentScreen === 'twitch') renderTwitch(screen);
     else if (currentScreen === 'stream') renderStream(screen);
     else if (currentScreen === 'mystream') renderMyStream(screen);
+    else if (currentScreen === 'case') renderCaseApp(screen, caseApi());
     else if (currentScreen === 'notes') renderNotes(screen);
     else if (currentScreen === 'calendar') renderPlans(screen);
     else if (currentScreen === 'settings') renderPhoneSettings(screen,{home:()=>goto('home'),appstore:()=>goto('appstore'),appearance:()=>goto('appearance'),lock:()=>editLockAppearance(screen,{render,toast}),values:()=>openUserValues(screen,{render,toast,changed:updatePhoneInjection}),chats:()=>editThreadAppearance(screen,null,{render,toast},{scope:'all'})});
@@ -855,6 +857,28 @@ export function render() {
 const SHOP_SCREENS = new Set(['shop', 'shopcat', 'shoporders']);
 
 let appearanceReturn='home';
+// ═══ SISTAVERN: приложение «Дело» ═══
+function openCaseThread(name, opts = {}) {
+    const want = keyOf(name);
+    const list = getThreadList();
+    const t = opts.group
+        ? list.find(x => x.isGroup && (x.key === 'group:' + want || keyOf(x.originalName || x.name) === want))
+        : list.find(x => !x.isGroup && (x.key === want || keyOf(x.originalName || x.name) === want));
+    if (!t) { toast('Чат «' + name + '» не найден: проверь контакты', 'fa-triangle-exclamation'); return; }
+    currentThreadKey = t.key;
+    goto('thread');
+    const draft = String(opts.draft || '');
+    if (!draft) return;
+    let tries = 0;
+    const put = () => {
+        const el = document.getElementById('gp-input');
+        if (el) { el.value = draft; el.dispatchEvent(new Event('input', { bubbles: true })); try { el.focus(); } catch (e) { /* ignore */ } }
+        else if (tries++ < 12) setTimeout(put, 70);
+    };
+    setTimeout(put, 70);
+}
+function caseApi() { return { home: () => goto('home'), render, toast, openThread: openCaseThread }; }
+
 function goto(screenName) {
     if(screenName==='appearance'&&currentScreen!=='appearance')appearanceReturn=currentScreen==='settings'?'settings':'home';
     // Ушла из магазина — значит корзина собрана, пора сказать про доставку
@@ -1467,6 +1491,10 @@ function renderHome(screen) {
                     <div class="gp-app-icon gp-app-msg">${ic('fa-comment-dots')}${unread > 0 ? `<span class="gp-app-badge">${unread > 9 ? '9+' : unread}</span>` : ''}</div>
                     <div class="gp-app-name">Сообщения</div>
                 </div>
+                ${isSistavernChat() ? `<div class="gp-app" data-app="case">
+                    <div class="gp-app-icon gp-app-case">${ic('fa-magnifying-glass')}${caseBadge() > 0 ? `<span class="gp-app-badge">${caseBadge()}</span>` : ''}</div>
+                    <div class="gp-app-name">Дело</div>
+                </div>` : ''}
                 <div class="gp-app" data-app="phone">
                     <div class="gp-app-icon gp-app-phone">${ic('fa-phone')}${callBadge() ? `<span class="gp-app-badge">${callBadge()}</span>` : ''}</div>
                     <div class="gp-app-name">Телефон</div>

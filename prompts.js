@@ -10,6 +10,7 @@ import { hasMixedRoleplaySms, roleplaySmsDirective } from './roleplay-sms.js';
 import { getSocialActivitySummary } from './social.js';
 import { getBankSummaryLine, bankInjectRule } from './bank.js';
 import { notesInjectBlock } from './notes.js';
+import { caseInjectLine } from './sistavern-case.js';
 import { channelInjectLine, anonInjectLine } from './channels.js';
 import { plansInjectLine, plansInjectRule } from './plans.js';
 import { callsInjectLine, callsInjectRule } from './calls.js';
@@ -152,6 +153,7 @@ function buildPrompt() {
     add(instagramInjectLine);
     add(plansInjectLine);
     add(notesInjectBlock);
+    add(caseInjectLine);
     add(twitchInjectLine);
     add(anonInjectLine);
     add(() => tinderInjectLine(phoneTurn !== null));
