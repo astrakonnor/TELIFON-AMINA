@@ -1,22 +1,22 @@
-// SISTAVERN — приложение «Дело»: план, улики, люди, хроника, поиск по чату, скрины, заметки, обвинение.
+// SISTAVERN — приложение «Дело»: план, улики, люди, хроника, скрины, заметки, обвинение.
 // Состояние хранится в метаданных чата (getMeta().caseFile). Улики выдаёт ведущий скрытыми маркерами
-// <!--case:C1--> в своих ответах; часть улик приложение открывает само (поиск), остальное можно отметить вручную.
+// <!--case:C1--> в своих ответах; часть улик приложение открывает само, остальное можно отметить вручную.
 import { getMeta, saveMeta } from './state.js';
 import { isSistavernTarget } from './sistavern-voices.js';
 import {
-    CASE_TITLE, CHAT_NAME, BRIEF, HOWTO, LEADS, PEOPLE, PERSON_NOTES, ALIBI, TIMELINE, ENDINGS, SEARCH_CHIPS, LOG,
+    CASE_TITLE, CHAT_NAME, BRIEF, HOWTO, LEADS, PEOPLE, PERSON_NOTES, ALIBI, TIMELINE, ENDINGS, LOG, SUPPORT_LEADS, SOURCES, SHARE_LABEL, BOARD, READY, AFTER,
 } from './sistavern-case-data.js';
 import { SCR1, SCR2 } from './sistavern-case-art.js';
 
 const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const norm = s => String(s || '').toLowerCase().replace(/ё/g, 'е').trim();
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
-const TABS = [['home', 'Главная'], ['plan', 'План'], ['clues', 'Улики'], ['people', 'Люди'], ['time', 'Хроника'], ['search', 'Поиск'], ['shots', 'Скрины'], ['notes', 'Заметки'], ['accuse', 'Обвинение']];
+const TABS = [['home', 'Главная'], ['plan', 'План'], ['clues', 'Улики'], ['people', 'Люди'], ['time', 'Хроника'], ['board', 'Версии'], ['shots', 'Скрины'], ['notes', 'Заметки'], ['accuse', 'Обвинение']];
 const POINTS = { direct: 2, indirect: 1, story: 0 };
 
-let tab = 'home', openLead = null, openPerson = null, filter = 'all', searchResult = null, shotObs = {}, accDraft = null, confirmManual = '';
+let tab = 'home', openLead = null, openPerson = null, filter = 'all', shotObs = {}, accDraft = null, confirmManual = '';
 const drafts = { note: '', pnote: '', motive: '', tlTime: '', tlText: '', q: '' };
-let corpusP = null, lastMeta = null;
+let lastMeta = null;
 
 export function isSistavernChat() {
     try { return isSistavernTarget(SillyTavern.getContext()); } catch (e) { return false; }
@@ -30,8 +30,8 @@ function file() {
     f.pnote = f.pnote && typeof f.pnote === 'object' ? f.pnote : {};
     f.notes = Array.isArray(f.notes) ? f.notes : [];
     f.tl = Array.isArray(f.tl) ? f.tl : [];
+    f.board = f.board && typeof f.board === 'object' ? f.board : {};
     f.hints = f.hints && typeof f.hints === 'object' ? f.hints : {};
-    f.searches = Array.isArray(f.searches) ? f.searches : [];
     return f;
 }
 // ── Маркеры ведущего ──
@@ -47,14 +47,9 @@ function markers() {
     }
     return out;
 }
-function searchedC3(f) {
-    const s = new Set(f.searches.map(norm));
-    return (s.has('отныне') || s.has('по делу')) && (s.has('черт') || s.has('гадем'));
-}
 export function unlocked() {
     const f = file(), set = markers();
     for (const id of f.manual) set.add(id);
-    if (searchedC3(f)) set.add('C3');
     return set;
 }
 function ending(set) { for (const k of Object.keys(ENDINGS)) if (set.has('end:' + k)) return k; return null; }
@@ -141,14 +136,14 @@ export function renderCaseApp(screen, api) {
         screen.querySelector('[data-act=home]').onclick = api.home;
         return;
     }
-    if (getMeta() !== lastMeta) { lastMeta = getMeta(); tab = 'home'; openLead = null; openPerson = null; filter = 'all'; searchResult = null; shotObs = {}; accDraft = null; confirmManual = ''; Object.keys(drafts).forEach(k => drafts[k] = ''); }
+    if (getMeta() !== lastMeta) { lastMeta = getMeta(); tab = 'home'; openLead = null; openPerson = null; filter = 'all'; shotObs = {}; accDraft = null; confirmManual = ''; Object.keys(drafts).forEach(k => drafts[k] = ''); }
     const f = file(), set = unlocked(), end = ending(set);
     const leads = visibleLeads(set);
     const found = leads.filter(l => set.has(l.id) && l.kind !== 'story').length;
     const total = LEADS.filter(l => l.kind !== 'story' && !l.after).length;
     const fresh = [...set].filter(id => LEADS.some(l => l.id === id) && !f.seen.includes(id)).length;
     if (tab === 'clues' && fresh) { for (const id of set) if (!f.seen.includes(id)) f.seen.push(id); saveMeta(); }
-    const body = ({ home: tHome, plan: tPlan, clues: tClues, people: tPeople, time: tTime, search: tSearch, shots: tShots, notes: tNotes, accuse: tAccuse }[tab] || tHome)(f, set, end, api);
+    const body = ({ home: tHome, plan: tPlan, clues: tClues, people: tPeople, time: tTime, board: tBoard, shots: tShots, notes: tNotes, accuse: tAccuse }[tab] || tHome)(f, set, end, api);
     screen.innerHTML = '<section class="svc"><header class="svc-head"><button class="svc-back" data-act="home" aria-label="Назад">‹</button><b>' + esc(CASE_TITLE) + '</b><span class="svc-prog">улик ' + found + '/' + total + '</span></header>'
         + '<nav class="svc-tabs">' + TABS.map(([id, name]) => '<button data-tab="' + id + '" aria-selected="' + (tab === id) + '">' + name + (id === 'clues' && fresh ? '<span class="svc-dot">' + fresh + '</span>' : '') + '</button>').join('') + '</nav>'
         + '<div class="svc-body">' + body + '</div></section>';
@@ -168,6 +163,7 @@ function tHome(f, set, end, api) {
     const pts = points(set, scored.map(l => l.id)), max = points(set, LEADS.filter(l => !l.after).map(l => l.id)) || 1;
     let h = '';
     if (end) h += '<div class="svc-card svc-end"><h4>' + esc(ENDINGS[end][0]) + '</h4><p>' + esc(ENDINGS[end][1]) + '</p></div>';
+    if (end) h += '<div class="svc-card"><h4>Что дальше</h4><p class="svc-dim">Дело раскрыто, но история не закончена. Решай сама(сам), как всё закрыть: от этого зависят реакции людей.</p>' + AFTER.map(([n], i) => '<button class="svc-btn" data-after="' + i + '">' + esc(n) + '</button>').join('') + '</div>';
     h += '<div class="svc-card"><h4>Что происходит</h4>' + BRIEF.map(t => '<p>' + esc(t) + '</p>').join('') + '</div>';
     h += '<div class="svc-card"><h4>Прогресс</h4><div class="svc-bar"><i style="width:' + Math.min(100, Math.round(100 * pts / max)) + '%"></i></div><p class="svc-dim">Сила дела по реестру: ' + pts + ' из ' + max + ' (прямые улики по 2, косвенные по 1)</p></div>';
     if (nxt) h += '<div class="svc-card"><h4>Следующий шаг</h4><p><b>' + esc(nxt.title) + '</b></p><p class="svc-dim">' + esc(nxt.why) + '</p><button class="svc-btn" data-go-lead="' + nxt.id + '">Открыть в плане</button></div>';
@@ -175,43 +171,50 @@ function tHome(f, set, end, api) {
     h += '<div class="svc-card"><h4>Как играть</h4>' + HOWTO.map(t => '<p>• ' + esc(t) + '</p>').join('') + '</div>';
     return h;
 }
+function srcLine(id) {
+    const x = SOURCES[id]; if (!x) return '';
+    return '<p class="svc-dim"><b>Источник:</b> ' + esc(x[0]) + ', ' + esc(x[1]) + ' ' + chip(SHARE_LABEL[x[2]], x[2] === 'yes' ? 'ok' : x[2] === 'ask' ? 'ind' : 'dir') + '<br>' + esc(x[3]) + '</p>';
+}
 function leadCard(l, f, set, api) {
     const done = set.has(l.id), lv = f.hints[l.id] || 0, open = openLead === l.id;
     let h = '<div class="svc-card" id="lead-' + l.id + '"><div class="svc-row"><div class="svc-grow"><h4>' + esc(l.title) + '</h4><p class="svc-dim">' + esc(l.why) + '</p></div><div>' + (done ? chip('найдено', 'ok') : chip('не найдено')) + '</div></div>';
-    if (done) h += '<p>' + esc(l.result) + '</p>';
+    if (done) h += '<p>' + esc(l.result) + '</p>' + srcLine(l.id);
     else {
         for (let i = 0; i < lv; i++) h += '<p class="svc-ask">' + 'Подсказка ' + (i + 1) + ': ' + esc(l.hints[i]) + '</p>';
-        if (l.tool === 'search') h += '<button class="svc-btn" data-tab-go="search">Открыть «Поиск»</button>';
         if (lv < l.hints.length) h += '<button class="svc-btn ghost" data-hint="' + l.id + '">' + (lv ? 'Ещё подсказка' : 'Подсказка') + ' (' + lv + '/' + l.hints.length + ')</button>';
         (l.ask || []).forEach((a, i) => { h += '<button class="svc-btn" data-ask="' + l.id + ':' + i + '">Написать: ' + esc(a.to) + '</button>'; });
         if (!l.tool) h += '<button class="svc-btn ghost" data-manual="' + l.id + '">' + (confirmManual === l.id ? 'Точно нашла(ёл)?' : 'Отметить вручную') + '</button>';
     }
     return h + '</div>';
 }
+function readyCard(set) {
+    return '<div class="svc-card"><h4>Кто готов говорить</h4>' + READY.map(([n, id, no, yes]) => '<p><b>' + esc(n) + '</b> ' + (set.has(id) ? chip('есть', 'ok') : chip('пока нет')) + '<br><span class="svc-dim">' + esc(set.has(id) ? yes : no) + '</span></p>').join('') + '</div>';
+}
 function tPlan(f, set, end, api) {
-    const leads = visibleLeads(set);
-    const todo = leads.filter(l => !set.has(l.id) && !l.side), side = leads.filter(l => !set.has(l.id) && l.side), done = leads.filter(l => set.has(l.id));
-    let h = '<p class="svc-dim">Это зацепки расследования. Нажимай «Подсказка», пока не станет ясно, кого спросить, а потом «Написать»: откроется чат с готовой фразой.</p>';
-    if (todo.length) h += '<h4>Сейчас</h4>' + todo.map(l => leadCard(l, f, set, api)).join('');
+    const leads = visibleLeads(set), open = leads.filter(l => !set.has(l.id)), isSup = l => SUPPORT_LEADS.includes(l.id);
+    const line1 = open.filter(l => !l.side), line2 = open.filter(isSup), side = open.filter(l => l.side && !isSup(l)), done = leads.filter(l => set.has(l.id));
+    let h = '<p class="svc-dim">Две линии. Линия 1 — кто сделал скрины. Линия 2 — как поддержать Максима: она не нужна для разгадки, но от неё зависит, чем закончится история. Нажимай «Подсказка», пока не станет ясно, кого спросить, а потом «Написать».</p>';
+    h += readyCard(set);
+    if (line1.length) h += '<h4>Линия 1. Кто сделал скрины</h4>' + line1.map(l => leadCard(l, f, set, api)).join('');
+    if (line2.length) h += '<h4>Линия 2. Максим</h4>' + line2.map(l => leadCard(l, f, set, api)).join('');
     if (side.length) h += '<h4>Побочные</h4>' + side.map(l => leadCard(l, f, set, api)).join('');
     if (done.length) h += '<h4>Готово</h4>' + done.map(l => leadCard(l, f, set, api)).join('');
-    if (!todo.length && !side.length) h += '<div class="svc-card"><p>Новых зацепок нет. Проверь «Хронику» и «Людей» и переходи к «Обвинению».</p></div>';
+    if (!line1.length && !line2.length && !side.length) h += '<div class="svc-card"><p>Новых зацепок нет. Проверь «Хронику» и «Версии» и переходи к «Обвинению».</p></div>';
     return h;
 }
 function tClues(f, set) {
     const leads = visibleLeads(set), got = leads.filter(l => set.has(l.id)), miss = leads.filter(l => !set.has(l.id));
     let h = got.length ? '' : '<div class="svc-card"><p>Пока пусто. Вкладка «План» подскажет, с чего начать.</p></div>';
-    h += got.map(l => '<div class="svc-card"><div class="svc-row"><div class="svc-grow"><h4>' + esc(l.title) + '</h4></div>' + kindChip(l.kind) + '</div><p>' + esc(l.result) + '</p><button class="svc-btn ghost" data-clue-note="' + l.id + '">В заметки</button></div>').join('');
+    h += got.map(l => '<div class="svc-card"><div class="svc-row"><div class="svc-grow"><h4>' + esc(l.title) + '</h4></div>' + kindChip(l.kind) + '</div><p>' + esc(l.result) + '</p>' + srcLine(l.id) + '<button class="svc-btn ghost" data-clue-note="' + l.id + '">В заметки</button></div>').join('');
     if (miss.length) h += '<h4>Ещё не найдено</h4>' + miss.map(l => '<div class="svc-card svc-lock"><div class="svc-row"><div class="svc-grow"><b>🔒 ' + esc(l.title) + '</b><p class="svc-dim">' + esc(l.why) + '</p></div>' + kindChip(l.kind) + '</div></div>').join('');
     return h;
 }
 const SUS = ['○', '🟡', '🔴', '✅'];
 function personRow(n, f, set) {
-    const w = LOG.windows?.[n], c4 = set.has('C4'), st = LOG.style?.[n], open = openPerson === n;
+    const w = LOG.windows?.[n], c4 = set.has('C4'), open = openPerson === n;
     const silentBoth = c4 && w && w[0] === 0 && w[1] === 0;
     let h = '<div class="svc-card"><div class="svc-row"><button class="svc-sus" data-sus="' + esc(n) + '" title="Подозрение: нажми, чтобы сменить">' + SUS[f.susp[n] || 0] + '</button><div class="svc-grow" data-person="' + esc(n) + '" style="cursor:pointer"><b>' + esc(n) + '</b> <span class="svc-dim">' + esc(PERSON_NOTES[n] || '') + '</span></div></div>';
     if (open) {
-        if (st) h += '<p class="svc-dim">Как пишет: заглавная в начале у ' + st.up + '% сообщений, запятые у ' + st.comma + '%, точка в конце у ' + st.dot + '%; ' + st.n + ' сообщений в выгрузке.</p>';
         if (c4 && w) h += '<p class="svc-dim">Лог: 21:05–21:12 — ' + (w[0] ? 'писал(а) ' + w[0] + ' р.' : 'молчал(а)') + '; 21:14–21:21 — ' + (w[1] ? 'писал(а) ' + w[1] + ' р.' : 'молчал(а)') + (silentBoth ? ' ' + chip('молчал(а) оба раза', 'dir') : '') + '</p>';
         if (c4 && ALIBI[n]) h += '<p>' + chip('алиби', 'ok') + esc(ALIBI[n]) + '</p>';
         h += '<textarea data-pnote="' + esc(n) + '" placeholder="Что ты знаешь о ' + esc(n) + '?">' + esc(f.pnote[n] || '') + '</textarea>';
@@ -221,15 +224,14 @@ function personRow(n, f, set) {
 }
 function tPeople(f, set) {
     const c4 = set.has('C4');
-    const filters = [['all', 'Все']].concat(c4 ? [['both', 'Молчали оба раза'], ['alibi', 'С алиби'], ['noalibi', 'Без алиби']] : []).concat([['lower', 'Пишут строчными'], ['mark', 'С моей отметкой']]);
+    const filters = [['all', 'Все']].concat(c4 ? [['both', 'Молчали оба раза'], ['alibi', 'С алиби'], ['noalibi', 'Без алиби']] : []).concat([['mark', 'С моей отметкой']]);
     if (!filters.some(x => x[0] === filter)) filter = 'all';
     let list = PEOPLE.slice();
     list = list.filter(n => {
-        const w = LOG.windows?.[n], st = LOG.style?.[n];
+        const w = LOG.windows?.[n];
         if (filter === 'both') return w && w[0] === 0 && w[1] === 0;
         if (filter === 'alibi') return !!ALIBI[n];
         if (filter === 'noalibi') return w && w[0] === 0 && w[1] === 0 && !ALIBI[n];
-        if (filter === 'lower') return st && st.up < 20;
         if (filter === 'mark') return (f.susp[n] || 0) > 0;
         return true;
     });
@@ -247,47 +249,8 @@ function tTime(f, set) {
     h += '<div class="svc-card"><input data-draft="tlTime" placeholder="Время (например 21:07)" value="' + esc(drafts.tlTime) + '"><input data-draft="tlText" placeholder="Что произошло" value="' + esc(drafts.tlText) + '"><button class="svc-btn" data-add-tl>Добавить</button></div>';
     return h;
 }
-function corpus() { return corpusP || (corpusP = import('./sistavern-corpus.js').then(m => m.default)); }
-function tSearch(f) {
-    let h = '<p class="svc-dim">Поиск по выгрузке чата (сентябрь–ноябрь 2026, около 74 тысяч сообщений с текстом). Слово или готовая фраза. Слова, которых меньше пяти за всё время, не учитываются.</p>';
-    h += '<div class="svc-card"><input data-draft="q" placeholder="например: отныне" value="' + esc(drafts.q) + '"><button class="svc-btn" data-search>Искать</button><div>' + SEARCH_CHIPS.map(c => '<button class="svc-btn ghost" data-chip="' + esc(c) + '">' + esc(c) + '</button>').join('') + '</div></div>';
-    h += '<div id="svc-result">' + (searchResult || '') + '</div>';
-    h += '<button class="svc-btn big ghost" data-style>Профиль стиля по людям</button>';
-    return h;
-}
-function renderCounts(C, q, counts) {
-    const P = C.people, total = Object.values(counts).reduce((a, b) => a + b, 0);
-    const rows = Object.entries(counts).map(([i, v]) => [P[+i], v, C.msgs[+i]]).sort((a, b) => b[1] - a[1]).slice(0, 14);
-    const mx = rows.length ? rows[0][1] : 1;
-    if (!total) return '<div class="svc-card"><h4>«' + esc(q) + '»</h4><p><b>0 раз</b> за всё время у всех.</p></div>';
-    return '<div class="svc-card"><h4>«' + esc(q) + '»</h4><p>Всего: <b>' + total + '</b></p><table><tr><th>Кто</th><th class="n">раз</th><th class="n">на 1000 сообщ.</th><th></th></tr>'
-        + rows.map(([n, v, m]) => '<tr><td>' + esc(n) + '</td><td class="n">' + v + '</td><td class="n">' + (m ? (1000 * v / m).toFixed(1) : '0') + '</td><td><span class="svc-meter" style="width:' + Math.max(3, Math.round(70 * v / mx)) + 'px"></span></td></tr>').join('') + '</table></div>';
-}
-async function doSearch(raw, screen, api) {
-    const q = norm(raw);
-    if (!q) return;
-    const C = await corpus();
-    const tokens = q.split(/[^\p{L}\p{N}]+/u).filter(Boolean);
-    let html;
-    const exactKey = Object.keys(C.phrases).find(k => norm(k) === q);
-    if (exactKey) html = renderCounts(C, raw, C.phrases[exactKey]);
-    else if (tokens.length === 1 && C.words[tokens[0]]) html = renderCounts(C, raw, C.words[tokens[0]]);
-    else if (tokens.length === 1) html = '<div class="svc-card"><h4>«' + esc(raw) + '»</h4><p>Встречается меньше пяти раз за всё время (точнее не считается).</p></div>';
-    else html = '<div class="svc-card"><h4>«' + esc(raw) + '»</h4><p>Для фраз из нескольких слов есть только готовые запросы выше. Попробуй одно слово.</p></div>';
-    searchResult = html;
-    const f = file();
-    const before = unlocked().has('C3');
-    if (!f.searches.map(norm).includes(q)) { f.searches.push(raw.slice(0, 60)); saveMeta(); }
-    api.render();
-    if (!before && unlocked().has('C3')) api.toast?.('Найдена улика: «Стиль и поиск по чату»', 'fa-magnifying-glass');
-}
-async function styleTable() {
-    const C = await corpus();
-    const rows = C.people.filter(n => n !== 'остальные').map(n => { const s = C.style[n]; return '<tr><td>' + esc(n) + '</td><td class="n">' + s.n + '</td><td class="n">' + s.up + '%</td><td class="n">' + s.comma + '%</td><td class="n">' + s.dot + '%</td><td class="n">' + s.med + '</td></tr>'; }).join('');
-    return '<div class="svc-card"><h4>Профиль стиля</h4><table><tr><th>Кто</th><th class="n">сообщ.</th><th class="n">заглавная</th><th class="n">запятая</th><th class="n">точка в конце</th><th class="n">длина</th></tr>' + rows + '</table><p class="svc-dim">заглавная: доля сообщений, начатых с большой буквы; длина: медиана в знаках.</p></div>';
-}
 const OBS = {
-    scr1: [['Время', 'Время на скрине: 20:10. Даты нет.'], ['Текст', 'Строчные буквы, без запятых, 11 слов. Слов «чёрт» и «гадем» нет. Слова «отныне» и «по делу» тут есть оба.'], ['Шапка', 'Групповой чат Telegram: сверху название и «в сети», имя над пузырём.']],
+    scr1: [['Время', 'Время на скрине: 20:10. Даты нет.'], ['Текст', 'Строчные буквы, без запятых, 11 слов. Слов «чёрт» и «гадем» нет. Слова «отныне» и «по делу» тут есть оба.'], ['Шапка', 'Групповой чат Telegram: 604 участника, 47 в сети, имя над пузырём. Чат публичный, так что скрин мог увидеть кто угодно.']],
     scr2: [['Время', 'Время на скрине: 21:07.'], ['Имя над пузырём', 'Над пузырём написано имя «МАКСИМКА», пузырь стоит слева с аватаром «M».'], ['Получатель', 'Имя получателя замазано, под ним статус «был(а) недавно».'], ['Текст', 'Строчные буквы, без запятых. «чёрт» и «гадем» упомянуты как тема («я специально пишу…»), а не вставлены в речь. Есть «к сожалению».']],
 };
 function tShots(f) {
@@ -295,6 +258,25 @@ function tShots(f) {
     [['scr1', 'Скрин №1 (выложен в 21:00, удалён)', SCR1], ['scr2', 'Скрин №2 («личка», выложил «Неизвестный»)', SCR2]].forEach(([id, title, src]) => {
         h += '<div class="svc-card"><h4>' + esc(title) + '</h4><img class="svc-shot" alt="' + esc(title) + '" src="' + src + '">' + OBS[id].map(([name], i) => '<button class="svc-btn' + (shotObs[id + i] ? '' : ' ghost') + '" data-obs="' + id + ':' + i + '">' + esc(name) + '</button>').join('');
         OBS[id].forEach(([name, txt], i) => { if (shotObs[id + i]) h += '<p class="svc-ask">' + esc(txt) + ' <button class="svc-btn ghost" data-obs-note="' + id + ':' + i + '">В заметки</button></p>'; });
+        h += '</div>';
+    });
+    return h;
+}
+function tBoard(f, set) {
+    const got = visibleLeads(set).filter(l => set.has(l.id) && l.kind !== 'story');
+    let h = '<p class="svc-dim">Доска версий: выбери, что ты думаешь, и отметь у каждой найденной улики, за версию она или против. Так видно, где ты пока опираешься на догадки.</p>';
+    BOARD.forEach(b => {
+        const st = f.board[b.id] || {}, links = st.links || {};
+        h += '<div class="svc-card"><h4>' + esc(b.q) + '</h4>';
+        if (b.pick) {
+            h += '<select data-board-pick="' + b.id + '"><option value="">— версия не выбрана —</option>' + PEOPLE.concat(['Кто-то другой']).map(n => '<option' + (st.ans === n ? ' selected' : '') + '>' + esc(n) + '</option>').join('') + '</select>';
+            if (got.length) h += got.map(l => '<div class="svc-row" style="margin-top:6px"><span class="svc-grow">' + esc(l.title) + '</span><select style="width:auto" data-board-link="' + b.id + ':' + l.id + '"><option value="">—</option><option value="for"' + (links[l.id] === 'for' ? ' selected' : '') + '>за</option><option value="against"' + (links[l.id] === 'against' ? ' selected' : '') + '>против</option></select></div>').join('');
+            else h += '<p class="svc-dim">Улик пока нет: сначала поговори с людьми (вкладка «План»).</p>';
+            const nf = Object.values(links).filter(v => v === 'for').length, na = Object.values(links).filter(v => v === 'against').length;
+            if (st.ans) h += '<p>' + chip('за: ' + nf, 'ok') + chip('против: ' + na, na ? 'dir' : '') + (na ? ' <span class="svc-dim">Есть улики против этой версии. Пересмотри её.</span>' : (nf ? '' : ' <span class="svc-dim">Пока это только догадка.</span>')) + '</p>';
+        } else {
+            h += '<textarea data-board-text="' + b.id + '" placeholder="' + esc(b.ph || '') + '">' + esc(st.text || '') + '</textarea>';
+        }
         h += '</div>';
     });
     return h;
@@ -326,6 +308,11 @@ function accText(f, set) {
 }
 function noteAdd(text) { const f = file(); if (!text) return; f.notes.unshift({ id: uid(), text: String(text).slice(0, 1500), time: Date.now() }); saveMeta(); }
 // ── События ──
+function keepScroll(screen, api) {
+    const sb = screen.querySelector('.svc-body'), st = sb ? sb.scrollTop : 0;
+    api.render();
+    const nb = screen.querySelector('.svc-body'); if (nb) nb.scrollTop = st;
+}
 function bind(screen, api) {
     const root = screen.querySelector('.svc');
     if (!root) return;
@@ -334,6 +321,10 @@ function bind(screen, api) {
     root.querySelectorAll('[data-tab-go]').forEach(b => b.onclick = () => { tab = b.dataset.tabGo; api.render(); });
     root.querySelectorAll('[data-go-lead]').forEach(b => b.onclick = () => { tab = 'plan'; api.render(); setTimeout(() => document.getElementById('lead-' + b.dataset.goLead)?.scrollIntoView({ block: 'start' }), 30); });
     root.querySelectorAll('[data-draft]').forEach(el => el.oninput = () => { drafts[el.dataset.draft] = el.value; });
+    root.querySelectorAll('[data-board-text]').forEach(el => { el.oninput = () => { const f0 = file(), id = el.dataset.boardText; (f0.board[id] = f0.board[id] || {}).text = el.value; saveMeta(); }; });
+    root.querySelectorAll('[data-board-pick]').forEach(el => { el.onchange = () => { const f0 = file(), id = el.dataset.boardPick; (f0.board[id] = f0.board[id] || {}).ans = el.value; saveMeta(); keepScroll(screen, api); }; });
+    root.querySelectorAll('[data-board-link]').forEach(el => { el.onchange = () => { const f0 = file(), [id, cl] = el.dataset.boardLink.split(':'), st = (f0.board[id] = f0.board[id] || {}); st.links = st.links || {}; if (el.value) st.links[cl] = el.value; else delete st.links[cl]; saveMeta(); keepScroll(screen, api); }; });
+    root.querySelectorAll('[data-after]').forEach(b => b.onclick = () => { const [, kind, draft] = AFTER[+b.dataset.after]; const f0 = file(); const who = kind === 'dm' ? ((f0.acc && f0.acc.suspect) || '') : kind; if (kind === 'group') api.openThread(CHAT_NAME, { group: true, draft }); else if (who) api.openThread(who, { draft }); else api.toast?.('Сначала выбери виновного в «Обвинении»', 'fa-triangle-exclamation'); });
     root.querySelectorAll('[data-pnote]').forEach(el => { el.oninput = () => { file().pnote[el.dataset.pnote] = el.value; saveMeta(); }; });
     const f = file();
     root.querySelectorAll('[data-hint]').forEach(b => b.onclick = () => { const id = b.dataset.hint, l = LEADS.find(x => x.id === id); f.hints[id] = Math.min((f.hints[id] || 0) + 1, l.hints.length); saveMeta(); api.render(); });
@@ -352,10 +343,6 @@ function bind(screen, api) {
     root.querySelectorAll('[data-del-tl]').forEach(b => b.onclick = () => { f.tl = f.tl.filter(t => t.id !== b.dataset.delTl); saveMeta(); api.render(); });
     root.querySelectorAll('[data-add-note]').forEach(b => b.onclick = () => { noteAdd(drafts.note.trim()); drafts.note = ''; api.render(); });
     root.querySelectorAll('[data-del-note]').forEach(b => b.onclick = () => { f.notes = f.notes.filter(n => n.id !== b.dataset.delNote); saveMeta(); api.render(); });
-    root.querySelectorAll('[data-search]').forEach(b => b.onclick = () => doSearch(drafts.q, screen, api));
-    root.querySelectorAll('[data-chip]').forEach(b => b.onclick = () => { drafts.q = b.dataset.chip; doSearch(b.dataset.chip, screen, api); });
-    const q = root.querySelector('[data-draft=q]'); if (q) q.onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); doSearch(drafts.q, screen, api); } };
-    root.querySelectorAll('[data-style]').forEach(b => b.onclick = async () => { searchResult = await styleTable(); api.render(); });
     root.querySelectorAll('[data-obs]').forEach(b => b.onclick = () => { shotObs[b.dataset.obs.replace(':', '')] = true; api.render(); });
     root.querySelectorAll('[data-obs-note]').forEach(b => b.onclick = () => { const [id, i] = b.dataset.obsNote.split(':'); noteAdd((id === 'scr1' ? 'Скрин №1' : 'Скрин №2') + ' · ' + OBS[id][+i][0] + ': ' + OBS[id][+i][1]); api.toast?.('Сохранено в заметки', 'fa-note-sticky'); });
     const sel = root.querySelector('[data-acc-suspect]'); if (sel) sel.onchange = () => { accDraft.suspect = sel.value; };
