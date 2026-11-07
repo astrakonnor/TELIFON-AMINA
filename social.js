@@ -992,6 +992,15 @@ function isParsableForPrefill(text, prefill) {
     return true;
 }
 
+function isCompletePrefillResponse(text, prefill) {
+    const cleaned = String(text || '').trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
+    const start = String(prefill || '').trimStart()[0];
+    if (!['[', '{'].includes(start) || cleaned[0] !== start) return false;
+    // Parse the whole response, not a nested object found in a continuation.
+    const value = safeJson(cleaned);
+    return start === '[' ? Array.isArray(value) : !!value && typeof value === 'object' && !Array.isArray(value);
+}
+
 async function recoverGeneratedText(error, finish, prefill = '') {
     const raw = await extractGeneratedText(error);
     if (!isUsableGeneratedText(raw)) return null;
@@ -1268,8 +1277,12 @@ async function socialGen(prompt, { maxTokens = 1024, image = null, prefill = '',
     const finish = (raw) => {
         checkActivity();
         let out = cleanGenOutput(raw);
+        if (!isUsableGeneratedText(out)) throw new Error('Модель вернула пустой ответ. Проверь ограничения провайдера, лимит токенов и настройки подключения.');
         if (!usePrefill) return normalizePhoneResult(out);
         out = removeCommonPreamble(out);
+        // Some providers ignore the assistant prefix and return the entire JSON.
+        // Adding the prefix again would turn a valid answer into invalid JSON.
+        if (isCompletePrefillResponse(out, prefill)) return normalizePhoneResult(out);
         out = removeRepeatedPrefill(out, prefill);
         return normalizePhoneResult(prefill + out);
     };
@@ -1481,10 +1494,17 @@ ${regenerate ? 'This replaces wording of an existing reply. Do not repeat or cre
 ${uiLangLine()}
 Return JSON only: {"photo_description":"","replies":[{"from":"canonical sender","text":"message"${isPhoneAppInstalled('bank')?',"bank":[]':''}${isPhoneAppInstalled('calendar')?',"plans":[]':''}}]}.`;
     const stickerIds=(owner.stickers||[]).slice(0,12).map(item=>({id:item.id,description:item.description,caption:item.caption}));
-    const raw = await socialGen(prompt+'\n'+CHAT_MEDIA_DIRECTIVE+'\nSaved stickers: '+JSON.stringify(stickerIds), { app: phoneAppForThread(threadKey || contactName), maxTokens: 2200, image, prefill: '{"photo_description":"' });
-    if (getMeta() !== owner || !phoneActivityAllowed(activityVersion)) throw Object.assign(new Error('Запрос отменён'), { name: 'AbortError' });
-    const obj = parseJsonObject(raw);
-    if (!obj || !Array.isArray(obj.replies)) throw new Error('Не удалось прочитать ответ SMS');
+    const smsPrompt = prompt+'\n'+CHAT_MEDIA_DIRECTIVE+'\nSaved stickers: '+JSON.stringify(stickerIds);
+    const options = { app: phoneAppForThread(threadKey || contactName), maxTokens: 2200, image, prefill: '{"photo_description":"' };
+    let obj = null;
+    for (let attempt = 0; attempt < 2; attempt++) {
+        const raw = await socialGen(smsPrompt + (attempt ? '\nThe previous response had an invalid format. Return the complete JSON object with a replies array.' : ''), options);
+        if (getMeta() !== owner || !phoneActivityAllowed(activityVersion)) throw Object.assign(new Error('Запрос отменён'), { name: 'AbortError' });
+        obj = parseJsonObject(raw);
+        if (obj && Array.isArray(obj.replies)) break;
+        obj = null;
+    }
+    if (!obj) throw new Error('Модель ответила в неподходящем формате SMS. Попробуй увеличить лимит ответа или отключить префилл.');
     const replies = obj.replies.filter(reply => reply && typeof reply === 'object').map(reply => {
         const from = isGroup ? members.find(member => resolveContactKey(member) === resolveContactKey(reply.from)) : contactName;
         return {

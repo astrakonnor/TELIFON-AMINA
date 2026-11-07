@@ -6944,7 +6944,7 @@ async function doSend(key, opts = {}) {
         if (e.name === 'AbortError') return;
         if(!outgoingSent&&attachment&&getMeta()===owner&&!getSmsAttachment(key))setSmsAttachment(key,attachment);
         console.error('[GlassPhone] send failed:', e);
-        toast('Не удалось получить ответ — нажми перегенерацию', 'fa-circle-exclamation');
+        toast(phoneReplyErrorMessage(e), 'fa-circle-exclamation');
     } finally {
         sending = false;
         typingKey = null;
@@ -6952,6 +6952,25 @@ async function doSend(key, opts = {}) {
         updateFabBadge();
         applyChatHiding();
     }
+}
+
+function phoneReplyErrorMessage(error) {
+    const messages = [];
+    const seen = new Set();
+    for (let current = error; current && !seen.has(current); current = current.cause) {
+        seen.add(current);
+        messages.push(String(current.message || ''));
+    }
+    const detail = messages.join(' ');
+    if (/safety|prohibited|moderation|content[_ -]?filter|blocked|политик|блокиров/i.test(detail))
+        return 'Провайдер заблокировал ответ. Попробуй изменить текст или выбрать другую модель.';
+    if (/неподходящем формате SMS/i.test(detail))
+        return 'Модель прислала неверный формат SMS. Увеличь лимит ответа или отключи префилл и повтори.';
+    if (/пустой ответ|empty (?:response|reply)/i.test(detail))
+        return 'Модель вернула пустой ответ. Проверь лимит ответа и настройки подключения.';
+    if (/429|rate.?limit|quota|квот/i.test(detail))
+        return 'Превышен лимит запросов провайдера. Проверь квоту и попробуй позже.';
+    return 'Не удалось получить ответ. Проверь подключение и нажми перегенерацию.';
 }
 
 // Индикатор «печатает» из внешних событий (регены/свайпы в основном чате)
