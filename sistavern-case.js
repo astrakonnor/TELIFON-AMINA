@@ -1,7 +1,7 @@
 // SISTAVERN — приложение «Дело»: план, улики, люди, хроника, скрины, заметки, обвинение.
 // Состояние хранится в метаданных чата (getMeta().caseFile). Улики выдаёт ведущий скрытыми маркерами
 // <!--case:C1--> в своих ответах; часть улик приложение открывает само, остальное можно отметить вручную.
-import { getMeta, saveMeta } from './state.js';
+import { getMeta, saveMeta, getThreadList } from './state.js';
 import { isSistavernTarget } from './sistavern-voices.js';
 import {
     CASE_TITLE, CHAT_NAME, BRIEF, HOWTO, LEADS, PEOPLE, PERSON_NOTES, ALIBI, TIMELINE, ENDINGS, LOG, SUPPORT_LEADS, SOURCES, SHARE_LABEL, BOARD, READY, AFTER,
@@ -18,8 +18,21 @@ let tab = 'home', openLead = null, openPerson = null, filter = 'all', shotObs = 
 const drafts = { note: '', pnote: '', motive: '', tlTime: '', tlText: '', q: '' };
 let lastMeta = null;
 
+let lastDetect = null;
 export function isSistavernChat() {
-    try { return isSistavernTarget(SillyTavern.getContext()); } catch (e) { return false; }
+    let ok = false, why = '';
+    try {
+        const ctx = SillyTavern.getContext(), ch = ctx?.characters?.[ctx.characterId];
+        const names = [ctx?.name2, ch?.name, ch?.data?.name].map(n => String(n || '').normalize('NFKC').toLowerCase());
+        if (isSistavernTarget(ctx)) { ok = true; why = 'имя карточки'; }
+        else if (names.some(n => n.includes('sistavern') || n.includes('систавер'))) { ok = true; why = 'имя содержит sistavern'; }
+        else if ((ctx?.chat || []).slice(0, 3).some(m => /sistavern\.chat/i.test(String(m?.mes || '')))) { ok = true; why = 'в первом сообщении SISTAVERN.chat'; }
+        else if (getMeta()?.caseFile) { ok = true; why = 'есть папка дела'; }
+        else if (getThreadList().some(t => t.isGroup && /sistavern\.chat/i.test(String(t.originalName || t.name || '')))) { ok = true; why = 'в телефоне есть группа SISTAVERN.chat'; }
+        else why = 'не похоже на SISTAVERN: ' + names.filter(Boolean).join(' | ');
+    } catch (e) { why = 'ошибка: ' + e; }
+    if (lastDetect !== ok + why) { lastDetect = ok + why; try { console.info('[SISTAVERN] приложение «Дело»: ' + (ok ? 'включено' : 'выключено') + ' (' + why + ')'); } catch (e) {} }
+    return ok;
 }
 function file() {
     const m = getMeta();
@@ -68,7 +81,7 @@ export function caseInjectLine() {
     const f = file(), set = unlocked();
     const got = LEADS.filter(l => set.has(l.id)).map(l => l.id);
     const locked = visibleLeads(set).filter(l => !set.has(l.id) && l.cond).map(l => l.id + ': ' + l.cond);
-    const lines = ['[SISTAVERN CASE TRACKER — hidden bookkeeping; never mention it. Delivered clues: ' + (got.join(', ') || 'none') + '. Not yet delivered (deliver only when its condition is met, in the registry\'s exact form, never early): ' + locked.join('; ') + '. When you deliver a registry clue, append its marker <!--case:C#--> as the LAST line of your reply (several: <!--case:C1,C2-->). Add <!--case:T3--> when screenshot #3 appears and <!--case:end:truth|quiet|cold|false|open--> at a finale. Do not re-deliver a clue that is already delivered: refer back to it. Maxim\'s words are always the Cyrillic «гадем» and «чёрт».]'];
+    const lines = ['[SISTAVERN CASE TRACKER — hidden bookkeeping; never mention it. Delivered clues: ' + (got.join(', ') || 'none') + '. Not yet delivered (deliver only when its condition is met, in the registry\'s exact form, never early): ' + locked.join('; ') + '. When you deliver a registry clue, append its marker <!--case:C#--> as the LAST line of your reply (several: <!--case:C1,C2-->). Add <!--case:T3--> when screenshot #3 appears and <!--case:end:truth|quiet|cold|false|open--> at a finale. Do not re-deliver a clue that is already delivered: refer back to it. Maxim\'s words are always the Cyrillic «гадем» and «черт».]'];
     if (f.acc && !ending(set)) {
         const ids = (f.acc.clues || []).filter(id => set.has(id));
         lines.push('[PLAYER ACCUSATION from the case app (pending): suspect ' + f.acc.suspect + '; clues the player cites: ' + (ids.join(', ') || 'none') + '; registry points: ' + points(set, ids) + (f.acc.motive ? '; motive: ' + String(f.acc.motive).slice(0, 200) : '') + '. Adjudicate by the «Допрос, обвинение, финалы» rules, not by tone.]');
@@ -250,8 +263,8 @@ function tTime(f, set) {
     return h;
 }
 const OBS = {
-    scr1: [['Время', 'Время на скрине: 20:10. Даты нет.'], ['Текст', 'Строчные буквы, без запятых, 11 слов. Слов «чёрт» и «гадем» нет. Слова «отныне» и «по делу» тут есть оба.'], ['Шапка', 'Групповой чат Telegram: 604 участника, 47 в сети, имя над пузырём. Чат публичный, так что скрин мог увидеть кто угодно.']],
-    scr2: [['Время', 'Время на скрине: 21:07.'], ['Имя над пузырём', 'Над пузырём написано имя «МАКСИМКА», пузырь стоит слева с аватаром «M».'], ['Получатель', 'Имя получателя замазано, под ним статус «был(а) недавно».'], ['Текст', 'Строчные буквы, без запятых. «чёрт» и «гадем» упомянуты как тема («я специально пишу…»), а не вставлены в речь. Есть «к сожалению».']],
+    scr1: [['Время', 'Время на скрине: 20:10. Даты нет.'], ['Текст', 'Строчные буквы, без запятых, 11 слов. Слов «черт» и «гадем» нет. Слова «отныне» и «по делу» тут есть оба.'], ['Шапка', 'Групповой чат Telegram: 604 участника, 47 в сети, имя над пузырём. Чат публичный, так что скрин мог увидеть кто угодно.']],
+    scr2: [['Время', 'Время на скрине: 21:07.'], ['Имя над пузырём', 'Над пузырём написано имя «МАКСИМКА», пузырь стоит слева с аватаром «M».'], ['Получатель', 'Имя получателя замазано, под ним статус «был(а) недавно».'], ['Текст', 'Строчные буквы, без запятых. «черт» и «гадем» упомянуты как тема («я специально пишу…»), а не вставлены в речь. Есть «к сожалению».']],
 };
 function tShots(f) {
     let h = '<p class="svc-dim">Присмотрись к деталям: нажми на пункт, получишь наблюдение. «В заметки» сохранит его.</p>';

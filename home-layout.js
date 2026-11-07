@@ -34,7 +34,7 @@ function layout(templates){
     const h=settings.homeLayout;h.entries=Array.isArray(h.entries)?h.entries:[];h.widgets=Array.isArray(h.widgets)?h.widgets:[];h.dock=Array.isArray(h.dock)?h.dock.slice(0,4):['list','phone','browser','maps'];
     const before=JSON.stringify([h.entries,h.dock,h.widgets]);
     while(h.dock.length<4)h.dock.push(null);
-    const used=new Set();h.dock=h.dock.map(app=>{if(!known.has(app)||used.has(app))return null;used.add(app);return app;});
+    const used=new Set();h.dock=h.dock.map(app=>{if(!known.has(app)||used.has(app)||!templates.has(app))return null;used.add(app);return app;});
     h.entries=h.entries.filter(e=>{
         if(e?.type==='folder'&&Array.isArray(e.apps)){e.apps=e.apps.filter(app=>{if(!known.has(app)||used.has(app))return false;used.add(app);return true;});return e.apps.length>0;}
         if(e?.type==='app'&&known.has(e.app)&&!used.has(e.app)){used.add(e.app);return true;}return false;
