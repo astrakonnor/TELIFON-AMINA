@@ -86,6 +86,12 @@ export function caseInjectLine() {
         const ids = (f.acc.clues || []).filter(id => set.has(id));
         lines.push('[PLAYER ACCUSATION from the case app (pending): suspect ' + f.acc.suspect + '; clues the player cites: ' + (ids.join(', ') || 'none') + '; registry points: ' + points(set, ids) + (f.acc.motive ? '; motive: ' + String(f.acc.motive).slice(0, 200) : '') + '. Adjudicate by the «Допрос, обвинение, финалы» rules, not by tone.]');
     }
+    try {
+        const chat = SillyTavern.getContext().chat || [];
+        const last = [...chat].reverse().find(m => m && m.is_user);
+        const hits = last ? (String(last.mes || '').match(/ч[её]рт|гадем/gi) || []).length : 0;
+        if (hits >= 2) lines.push('[PLAYER IS WRITING LIKE MAXIM (their last message stuffs «черт/гадем» into the sentence, ' + hits + ' times): let one or two characters notice it in this reply, briefly and in their own voice (e.g. a.: «чел совсем переролил в таверне походу…»). Do not accuse or suspect the player; remind that anyone can fake his style, so style alone is not proof (C3 stays indirect).]');
+    } catch (e) { /* ignore */ }
     return lines.join('\n');
 }
 // ── Стили ──
